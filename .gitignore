@@ -5,3 +5,9 @@ __pycache__/
 *.tfstate.backup
 .terraform/
 .terraform.lock.hcl
+changes.sh
+terraform-demo/terraform.tfstate
+terraform-demo/terraform.tfstate.backup
+terraform-demo/.terraform/
+terraform-demo/.terraform.lock.hcl/
+CLAUDE.md
