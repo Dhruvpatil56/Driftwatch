@@ -25,7 +25,7 @@ def test_ec2_attributes_are_normalized(hcl_path):
     resources = {r.resource_address: r for r in parse_hcl(hcl_path)}
     web = resources["aws_instance.web"]
     assert web.get("instance_type") == "t3.micro"
-    assert web.get("ami") == "ami-0abcdef1234567890"
+    assert web.get("ami") == "ami-07a00cf47dbbc844c"
 
 
 def test_parse_directory_discovers_tf_files(demo_dir):
