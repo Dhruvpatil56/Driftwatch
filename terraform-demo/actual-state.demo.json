@@ -1,0 +1,43 @@
+{
+  "_comment": "Offline stand-in for the AWS API. Raw AWS-API-shaped objects keyed by Terraform type. Used by main.py when live AWS is unavailable so the demo always produces output. The web instance has drifted to m5.large; an extra unmanaged instance demonstrates Ownership Drift.",
+  "aws_instance": [
+    {
+      "InstanceId": "i-0demo0web00000001",
+      "InstanceType": "m5.large",
+      "ImageId": "ami-0abcdef1234567890",
+      "State": { "Name": "running" }
+    },
+    {
+      "InstanceId": "i-0orphan99999999",
+      "InstanceType": "t2.nano",
+      "ImageId": "ami-0abcdef1234567890",
+      "State": { "Name": "running" }
+    }
+  ],
+  "aws_security_group": [
+    {
+      "GroupId": "sg-0demo0websg000001",
+      "GroupName": "driftwatch-web-sg",
+      "Description": "DriftWatch demo security group",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [{ "CidrIp": "0.0.0.0/0" }]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "-1",
+          "IpRanges": [{ "CidrIp": "0.0.0.0/0" }]
+        }
+      ]
+    }
+  ],
+  "aws_s3_bucket": [
+    {
+      "Name": "driftwatch-demo-data"
+    }
+  ]
+}
