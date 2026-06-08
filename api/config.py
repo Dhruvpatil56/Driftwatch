@@ -6,7 +6,12 @@ environment variables, never from here.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_DEMO_DIR = _REPO_ROOT / "terraform-demo"
 
 
 class Settings(BaseSettings):
@@ -16,6 +21,11 @@ class Settings(BaseSettings):
     # AWS / detection
     aws_region: str = "ap-south-1"
     driftwatch_offline: bool = False
+
+    # Detection inputs (overridable so tests can point at checked-in fixtures).
+    hcl_path: str = str(_DEMO_DIR)
+    tfstate_path: str = str(_DEMO_DIR / "terraform.tfstate")
+    demo_actual_path: str = str(_DEMO_DIR / "actual-state.demo.json")
 
     # API
     cors_origins: str = "http://localhost:3000"

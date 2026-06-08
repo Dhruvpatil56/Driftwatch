@@ -8,8 +8,13 @@ them up.
 
 import os
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["DRIFTWATCH_OFFLINE"] = "1"
+# Detection reads a state file; point it at the checked-in fixture so the suite
+# passes on a clean checkout with zero real AWS resources.
+os.environ["TFSTATE_PATH"] = os.path.join(_HERE, "fixtures", "demo.tfstate")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -16,10 +16,17 @@ def test_parse_demo_state_returns_recorded_resources(tfstate_path):
 
 
 def test_cloud_id_comes_from_state_id(tfstate_path):
+    # Assert shape/format only — never hardcode real AWS resource IDs.
     resources = {r.resource_address: r for r in parse_tfstate(tfstate_path)}
-    assert resources["aws_instance.web"].cloud_id == "i-004890feb3bc5e019"
-    assert resources["aws_security_group.web_sg"].cloud_id == "sg-02cfa31a196830f0d"
-    assert resources["aws_s3_bucket.data"].cloud_id == "driftwatch-demo-data"
+
+    instance_id = resources["aws_instance.web"].cloud_id
+    assert instance_id is not None and instance_id.startswith("i-")
+
+    sg_id = resources["aws_security_group.web_sg"].cloud_id
+    assert sg_id is not None and sg_id.startswith("sg-")
+
+    # S3 buckets use the bucket name as their id.
+    assert resources["aws_s3_bucket.data"].cloud_id
 
 
 def test_data_sources_are_ignored():

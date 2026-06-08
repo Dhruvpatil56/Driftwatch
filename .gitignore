@@ -3,6 +3,8 @@ __pycache__/
 .env
 *.tfstate
 *.tfstate.backup
+# ...but the test fixture (fake, machine-independent IDs) MUST be checked in.
+!tests/fixtures/demo.tfstate
 .terraform/
 .terraform.lock.hcl
 changes.sh

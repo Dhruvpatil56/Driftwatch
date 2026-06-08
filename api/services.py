@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,11 +26,6 @@ from engine.diff import reconcile
 from engine.parser import parse_hcl, parse_tfstate
 from models.drift import DriftResult
 from providers.aws import AWSProvider, build_actual
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DEMO_DIR = REPO_ROOT / "terraform-demo"
-STATE_PATH = DEMO_DIR / "terraform.tfstate"
-DEMO_ACTUAL_PATH = DEMO_DIR / "actual-state.demo.json"
 
 RESOURCE_TYPES = ["aws_instance", "aws_s3_bucket", "aws_security_group"]
 
@@ -48,7 +42,7 @@ def _utcnow() -> datetime:
 
 # --- detection -------------------------------------------------------------
 def _load_demo_actual() -> list:
-    with open(DEMO_ACTUAL_PATH, "r", encoding="utf-8") as fh:
+    with open(settings.demo_actual_path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     out = []
     for resource_type in RESOURCE_TYPES:
@@ -69,8 +63,8 @@ def _get_actual() -> list:
 
 def detect() -> list[DriftResult]:
     """Run the full three-way reconciliation and return scored drift."""
-    desired = parse_hcl(str(DEMO_DIR))
-    recorded = parse_tfstate(str(STATE_PATH))
+    desired = parse_hcl(settings.hcl_path)
+    recorded = parse_tfstate(settings.tfstate_path)
     actual = _get_actual()
     return reconcile(desired, recorded, actual)
 

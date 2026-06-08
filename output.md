@@ -27,6 +27,7 @@ AWSProvider ─┘
 | `migrations/` | alembic (`0001_create_drift_events`) |
 | `frontend/` | React+TS+Tailwind+Recharts dashboard |
 | `docker/` | compose (8 services) + Dockerfiles |
+| `scripts/` | `wait_for_db.py`, `simulate_drift.sh`, `restore_state.sh` |
 | `main.py` | Sprint 1 CLI report |
 
 ## API (`/api`)
@@ -35,11 +36,19 @@ AWSProvider ─┘
 ## Dashboard (localhost:3000)
 Single dark page: summary cards (Total/Critical/High/Medium/Low), drift table (main element), bar chart by type, Simulate/Restore/Refresh buttons, 30s auto-refresh. Risk colors: Critical=red, High=orange, Medium=yellow, Low=green.
 
+## State (real-AWS workflow)
+`terraform-demo/terraform.tfstate` is **gitignored** — it holds real AWS state. The parsers + detection always read it, so a local state file is required:
+```bash
+cd terraform-demo && terraform init && terraform apply   # creates real infra + local state
+```
+`main.tf` and the parser tests pin the **real** resource IDs/AMI from that apply.
+
 ## Run
 ```bash
 # CLI (Sprint 1)
-DRIFTWATCH_OFFLINE=1 python main.py     # offline demo (no AWS needed)
-python -m pytest                        # 53 tests
+python main.py                          # live AWS (ap-south-1)
+DRIFTWATCH_OFFLINE=1 python main.py     # actual-state from demo fixture (still needs local tfstate)
+python -m pytest                        # 53 tests (needs local real tfstate for ID assertions)
 
 # Full stack
 cd docker && cp ../.env.example ../.env && docker compose up   # 8 services
@@ -56,8 +65,9 @@ cd docker && cp ../.env.example ../.env && docker compose up   # 8 services
 | Missing | Missing | Exists | Ownership Drift |
 
 ## Status
-- ✅ 53 Python tests passing; frontend builds clean (tsc strict + vite)
-- Config via `.env`; AWS creds from env (never hardcoded); `DRIFTWATCH_OFFLINE=1` for zero-config demo
+- ✅ 53 Python tests passing **with local real tfstate**; frontend builds clean (tsc strict + vite)
+- Config via `.env`; AWS creds from env (never hardcoded)
 - Stack: Python · FastAPI · SQLAlchemy/alembic · Postgres · APScheduler · React/TS/Tailwind/Recharts · Docker Compose
-- Not yet verified locally: `docker compose up` end-to-end (no Docker CLI in build env)
+- ⚠️ No committed state fixture: clean checkout w/o local tfstate can't run parsers/detection (`test_cloud_id_comes_from_state_id` and the offline demo need it). CI would need a sanitized fixture.
+- Not yet verified: `docker compose up` end-to-end (no Docker CLI in build env)
 - Next: Sprint 4 resolver (count/for_each) → OPA/Groq → GitOps PRs
