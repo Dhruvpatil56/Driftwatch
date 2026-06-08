@@ -26,6 +26,7 @@ def health() -> dict:
 
 @router.get("/drift")
 def get_drift(db: Session = Depends(get_db)) -> list[dict]:
+    services.scan_and_persist(db)
     return [e.to_dict() for e in services.list_active(db)]
 
 

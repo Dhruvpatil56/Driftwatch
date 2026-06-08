@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-INSTANCE_ID="i-004890feb3bc5e019"
-SG_ID="sg-02cfa31a196830f0d"
+INSTANCE_ID="i-08bbbeb680e86a500"
+SG_ID="sg-032a91de65677f051"
 BUCKET="driftwatch-demo-data"
 REGION="ap-south-1"
 
