@@ -1,0 +1,4 @@
+python-hcl2
+boto3
+pydantic
+pytest
