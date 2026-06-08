@@ -25,15 +25,22 @@ class _FakeEC2:
 
 
 class _FakeS3:
-    def __init__(self, buckets, versioning=None):
+    def __init__(self, buckets, versioning=None, tags=None):
         self._buckets = buckets
         self._versioning = versioning or {}
+        self._tags = tags or {}  # bucket name -> {key: value}
 
     def list_buckets(self):
         return {"Buckets": self._buckets}
 
     def get_bucket_versioning(self, Bucket):
         return {"Status": self._versioning.get(Bucket, "Disabled")}
+
+    def get_bucket_tagging(self, Bucket):
+        if Bucket not in self._tags:
+            # mirror the real API, which raises NoSuchTagSet for untagged buckets
+            raise Exception("NoSuchTagSet")
+        return {"TagSet": [{"Key": k, "Value": v} for k, v in self._tags[Bucket].items()]}
 
 
 class _FakeSession:
@@ -64,7 +71,11 @@ def fake_provider():
             }
         ],
     )
-    s3 = _FakeS3(buckets=[{"Name": "my-bucket"}], versioning={"my-bucket": "Enabled"})
+    s3 = _FakeS3(
+        buckets=[{"Name": "my-bucket"}],
+        versioning={"my-bucket": "Enabled"},
+        tags={"my-bucket": {"Name": "my-bucket", "Environment": "prod"}},
+    )
     return AWSProvider(region="ap-south-1", session=_FakeSession(ec2, s3))
 
 
@@ -96,6 +107,18 @@ def test_list_s3_includes_versioning(fake_provider):
     assert buckets[0].cloud_id == "my-bucket"
     assert buckets[0].get("bucket") == "my-bucket"
     assert buckets[0].get("versioning") == "Enabled"
+
+
+def test_list_s3_includes_tags(fake_provider):
+    buckets = fake_provider.list_resources(["aws_s3_bucket"])
+    assert buckets[0].get("tags") == {"Environment": "prod", "Name": "my-bucket"}
+
+
+def test_list_s3_untagged_bucket_yields_empty_tags():
+    s3 = _FakeS3(buckets=[{"Name": "no-tags"}])  # no tags registered -> NoSuchTagSet
+    provider = AWSProvider(region="ap-south-1", session=_FakeSession(_FakeEC2([], []), s3))
+    buckets = provider.list_resources(["aws_s3_bucket"])
+    assert buckets[0].get("tags") == {}
 
 
 def test_list_resources_filters_by_type(fake_provider):

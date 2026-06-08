@@ -59,6 +59,21 @@ def test_in_sync_resource_produces_no_drift():
     assert reconcile(desired, recorded, actual) == []
 
 
+def test_s3_tag_drift_is_detected():
+    # desired == recorded tags, but an out-of-band tag was added in the cloud
+    tf_tags = {"Name": "b"}
+    aws_tags = {"Name": "b", "Environment": "prod"}
+    desired = [_r("aws_s3_bucket.data", "aws_s3_bucket", DESIRED, {"bucket": "b", "tags": tf_tags})]
+    recorded = [_r("aws_s3_bucket.data", "aws_s3_bucket", RECORDED, {"bucket": "b", "tags": tf_tags}, cloud_id="b")]
+    actual = [_r("", "aws_s3_bucket", ACTUAL, {"bucket": "b", "tags": aws_tags}, cloud_id="b")]
+
+    drifts = reconcile(desired, recorded, actual)
+
+    assert len(drifts) == 1
+    assert drifts[0].field == "tags"
+    assert drifts[0].drift_type == INFRASTRUCTURE_DRIFT
+
+
 def test_deleted_out_of_band_is_configuration_drift():
     desired = [_r("aws_instance.web", "aws_instance", DESIRED, {"instance_type": "t3.micro"})]
     recorded = [_r("aws_instance.web", "aws_instance", RECORDED, {"instance_type": "t3.micro"}, cloud_id="i-1")]

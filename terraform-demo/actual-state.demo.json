@@ -1,5 +1,5 @@
 {
-  "_comment": "Offline stand-in for the AWS API. Raw AWS-API-shaped objects keyed by Terraform type. Used by main.py when live AWS is unavailable so the demo always produces output. The web instance has drifted to m5.large; an extra unmanaged instance demonstrates Ownership Drift.",
+  "_comment": "Offline stand-in for the AWS API. Raw AWS-API-shaped objects keyed by Terraform type. Used by main.py when live AWS is unavailable so the demo always produces output. The web instance has drifted to m5.large; an extra unmanaged instance demonstrates Ownership Drift; the bucket has an out-of-band 'Environment' tag demonstrating S3 tag drift.",
   "aws_instance": [
     {
       "InstanceId": "i-0demo0web00000001",
@@ -37,7 +37,11 @@
   ],
   "aws_s3_bucket": [
     {
-      "Name": "driftwatch-demo-data"
+      "Name": "driftwatch-demo-data",
+      "TagSet": [
+        { "Key": "Name", "Value": "driftwatch-demo-data" },
+        { "Key": "Environment", "Value": "production" }
+      ]
     }
   ]
 }

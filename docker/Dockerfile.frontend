@@ -1,0 +1,14 @@
+# React dashboard (Sprint 3). Runs the Vite dev server bound to 0.0.0.0:3000.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY frontend/package.json ./
+RUN npm install
+
+COPY frontend/ .
+
+EXPOSE 3000
+
+# VITE_API_URL is provided at runtime via the compose env_file.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

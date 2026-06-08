@@ -1,4 +1,16 @@
+# --- Core engine (Sprint 1) ---
 python-hcl2
 boto3
-pydantic
+pydantic>=2
 pytest
+
+# --- API / persistence (Sprint 2) ---
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+psycopg2-binary
+alembic
+apscheduler
+pydantic-settings
+prometheus-fastapi-instrumentator
+httpx

@@ -69,6 +69,22 @@ def _drop_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
 
+def _normalize_tags(raw_tags: Any) -> dict[str, str]:
+    """Canonicalize tags to an order-independent ``{key: value}`` dict.
+
+    Terraform (HCL/state) stores tags as a dict; the AWS S3 API returns a
+    ``TagSet`` list of ``{"Key": ..., "Value": ...}``. Both collapse to the same
+    shape so the diff engine can compare them like any other attribute.
+    """
+    if isinstance(raw_tags, list):
+        tags = {t.get("Key"): t.get("Value") for t in raw_tags if t.get("Key") is not None}
+    elif isinstance(raw_tags, dict):
+        tags = dict(raw_tags)
+    else:
+        tags = {}
+    return {k: tags[k] for k in sorted(tags)}
+
+
 # --- Terraform-shaped sources (desired + recorded) -------------------------
 def _tf_ec2(raw: dict) -> dict:
     return _drop_none({"instance_type": raw.get("instance_type"), "ami": raw.get("ami")})
@@ -86,7 +102,9 @@ def _tf_sg(raw: dict) -> dict:
 
 
 def _tf_s3(raw: dict) -> dict:
-    return _drop_none({"bucket": raw.get("bucket")})
+    out = _drop_none({"bucket": raw.get("bucket")})
+    out["tags"] = _normalize_tags(raw.get("tags"))
+    return out
 
 
 # --- AWS-shaped source (actual) --------------------------------------------
@@ -108,11 +126,12 @@ def _aws_sg(raw: dict) -> dict:
 
 
 def _aws_s3(raw: dict) -> dict:
-    out: dict[str, Any] = {"bucket": raw.get("Name") or raw.get("bucket")}
+    out: dict[str, Any] = _drop_none({"bucket": raw.get("Name") or raw.get("bucket")})
     # versioning is only known if the scraper looked it up
     if "Versioning" in raw:
         out["versioning"] = raw["Versioning"]
-    return _drop_none(out)
+    out["tags"] = _normalize_tags(raw.get("TagSet"))
+    return out
 
 
 _TF_NORMALIZERS = {

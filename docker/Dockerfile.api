@@ -1,0 +1,17 @@
+# Image shared by the `api` and `scraper` services (different commands).
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+# Wait for Postgres, apply migrations, then serve.
+CMD ["sh", "-c", "python scripts/wait_for_db.py && alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]

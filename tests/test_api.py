@@ -1,0 +1,74 @@
+"""Offline smoke tests for the Sprint 2 API.
+
+Runs the real FastAPI app against an in-memory SQLite DB with
+``DRIFTWATCH_OFFLINE=1`` so detection uses the committed demo fixture (no AWS,
+no Postgres needed). Env vars are set before importing the app so settings pick
+them up.
+"""
+
+import os
+
+os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
+os.environ["DRIFTWATCH_OFFLINE"] = "1"
+
+import pytest
+from fastapi.testclient import TestClient
+
+from api.main import app
+from api.services import SIM_ADDRESS
+
+
+@pytest.fixture
+def client():
+    # `with` triggers FastAPI startup: create tables + initial offline scan.
+    with TestClient(app) as c:
+        yield c
+
+
+def test_health(client):
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_get_drift_returns_demo_drifts(client):
+    resp = client.get("/api/drift")
+    assert resp.status_code == 200
+    events = resp.json()
+    # demo fixture yields instance-type, S3 tag, and ownership drift
+    assert len(events) >= 3
+    addresses = {e["resource_address"] for e in events}
+    assert "aws_instance.web" in addresses
+    assert all("detected_at" in e and "id" in e for e in events)
+
+
+def test_summary_shape_matches_active(client):
+    total = len(client.get("/api/drift").json())
+    summary = client.get("/api/drift/summary").json()
+    assert summary["total"] == total
+    assert set(summary["by_risk"]) == {"Critical", "High", "Medium", "Low"}
+    assert isinstance(summary["by_type"], dict)
+
+
+def test_simulate_then_restore(client):
+    before = len(client.get("/api/drift").json())
+
+    created = client.post("/api/drift/simulate").json()["created"]
+    assert created["resource_address"] == SIM_ADDRESS
+    assert created["risk_impact"] == "High"
+
+    after = client.get("/api/drift").json()
+    assert len(after) == before + 1
+    assert any(e["resource_address"] == SIM_ADDRESS for e in after)
+
+    resolved = client.post("/api/drift/restore").json()["resolved"]
+    assert resolved == 1
+
+    restored = client.get("/api/drift").json()
+    assert not any(e["resource_address"] == SIM_ADDRESS for e in restored)
+    assert len(restored) == before
+
+
+def test_metrics_endpoint_exposed(client):
+    resp = client.get("/metrics")
+    assert resp.status_code == 200

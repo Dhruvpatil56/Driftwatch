@@ -1,15 +1,15 @@
 # DriftWatch — Build Status
 
-Sprint 1 (Core Engine) complete. Three-way reconciliation works for EC2, S3, SG.
+Sprints 1–3 complete. Core engine + FastAPI/Postgres API + React dashboard.
 
 ## What it does
-Compares 3 views of infra and classifies drift:
-- **Desired** (HCL) + **Recorded** (tfstate) + **Actual** (AWS) → `DriftResult`
+Reconciles 3 views of infra and classifies drift, then serves + visualizes it:
+- **Desired** (HCL) + **Recorded** (tfstate) + **Actual** (AWS) → `DriftResult` → DB → dashboard
 
 ## Pipeline
 ```
 parse_hcl ─┐
-parse_tfstate ─┤→ normalize → reconcile (diff) → classify → score → report
+parse_tfstate ─┤→ normalize → reconcile → classify → score → drift_events (DB) → /api → dashboard
 AWSProvider ─┘
 ```
 
@@ -17,33 +17,34 @@ AWSProvider ─┘
 | Path | Role |
 |------|------|
 | `models/` | `NormalizedResource`, `DriftResult` |
-| `engine/parser/` | HCL + tfstate parsers, normalization layer |
+| `engine/parser/` | HCL + tfstate parsers, normalization (incl. S3 tags) |
 | `engine/classifier/` | Drift Matrix (`classify_presence`, `classify_value`) |
 | `engine/diff/` | three-way reconcile + cloud_id matching |
 | `engine/scorer/` | cost/risk/governance impact |
-| `providers/aws/` | boto3 scraper (EC2/S3/SG) |
-| `providers/gcp/` | stub |
-| `main.py` | orchestrates + prints report |
+| `providers/aws/` | boto3 scraper (EC2/S3/SG) · `providers/gcp/` stub |
+| `api/` | FastAPI app, SQLAlchemy `DriftEvent`, detection+persistence service |
+| `scraper/` | APScheduler, scans every 15 min |
+| `migrations/` | alembic (`0001_create_drift_events`) |
+| `frontend/` | React+TS+Tailwind+Recharts dashboard |
+| `docker/` | compose (8 services) + Dockerfiles |
+| `main.py` | Sprint 1 CLI report |
+
+## API (`/api`)
+`GET /health` · `GET /drift` · `GET /drift/summary` · `POST /drift/simulate` · `POST /drift/restore` · `/metrics`
+
+## Dashboard (localhost:3000)
+Single dark page: summary cards (Total/Critical/High/Medium/Low), drift table (main element), bar chart by type, Simulate/Restore/Refresh buttons, 30s auto-refresh. Risk colors: Critical=red, High=orange, Medium=yellow, Low=green.
 
 ## Run
 ```bash
-python main.py                 # live AWS (ap-south-1), falls back to demo on failure
-DRIFTWATCH_OFFLINE=1 python main.py   # offline demo fixture
-python -m pytest               # 43 tests
-```
+# CLI (Sprint 1)
+DRIFTWATCH_OFFLINE=1 python main.py     # offline demo (no AWS needed)
+python -m pytest                        # 53 tests
 
-## Sample output
-```
-================================
-aws_instance.web
-Desired: t3.micro
-Recorded: t3.micro
-Actual: m5.large
-Classification: Infrastructure Drift
-Cost Impact: Unknown
-Risk Impact: Low
-Governance: None
-================================
+# Full stack
+cd docker && cp ../.env.example ../.env && docker compose up   # 8 services
+# api :8000  frontend :3000  postgres :5432  redis :6379
+# prometheus :9090  grafana :3001  pgadmin :5050  + scraper
 ```
 
 ## Drift Matrix
@@ -55,6 +56,8 @@ Governance: None
 | Missing | Missing | Exists | Ownership Drift |
 
 ## Status
-- ✅ 43 tests passing, all modules compile
-- Stack: Python + boto3 + python-hcl2 + pydantic + pytest (no API/DB/frontend yet)
-- Next: Sprint 4 resolver (`engine/resolver/` empty), then FastAPI/Postgres
+- ✅ 53 Python tests passing; frontend builds clean (tsc strict + vite)
+- Config via `.env`; AWS creds from env (never hardcoded); `DRIFTWATCH_OFFLINE=1` for zero-config demo
+- Stack: Python · FastAPI · SQLAlchemy/alembic · Postgres · APScheduler · React/TS/Tailwind/Recharts · Docker Compose
+- Not yet verified locally: `docker compose up` end-to-end (no Docker CLI in build env)
+- Next: Sprint 4 resolver (count/for_each) → OPA/Groq → GitOps PRs

@@ -17,6 +17,22 @@ def test_s3_bucket_name_normalizes_across_sources():
     assert tf["bucket"] == aws["bucket"] == "my-bucket"
 
 
+def test_s3_tags_normalize_to_same_dict_across_sources():
+    # Terraform stores a dict; AWS returns a TagSet list — both collapse equal.
+    tf = normalize("aws_s3_bucket", RECORDED, {"bucket": "b", "tags": {"Name": "b", "Env": "prod"}})
+    aws = normalize(
+        "aws_s3_bucket",
+        ACTUAL,
+        {"Name": "b", "TagSet": [{"Key": "Env", "Value": "prod"}, {"Key": "Name", "Value": "b"}]},
+    )
+    assert tf["tags"] == aws["tags"] == {"Env": "prod", "Name": "b"}
+
+
+def test_s3_untagged_normalizes_to_empty_tags():
+    assert normalize("aws_s3_bucket", ACTUAL, {"Name": "b"})["tags"] == {}
+    assert normalize("aws_s3_bucket", RECORDED, {"bucket": "b"})["tags"] == {}
+
+
 def test_sg_ingress_rule_matches_between_terraform_and_aws():
     tf = normalize(
         "aws_security_group",

@@ -116,6 +116,13 @@ class AWSProvider(CloudProvider):
                 raw["Versioning"] = versioning.get("Status", "Disabled")
             except Exception:
                 pass
+            # enrich with tags so tag drift is detectable. Buckets with no tags
+            # raise NoSuchTagSet; treat that as an empty tag set.
+            try:
+                tagging = s3.get_bucket_tagging(Bucket=bucket["Name"])
+                raw["TagSet"] = tagging.get("TagSet", [])
+            except Exception:
+                raw["TagSet"] = []
             resources.append(build_actual("aws_s3_bucket", raw))
         return resources
 
