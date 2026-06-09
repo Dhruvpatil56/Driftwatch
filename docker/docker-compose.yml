@@ -47,6 +47,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     env_file: ../.env
+    volumes:
+      - ../terraform-demo:/app/terraform-demo:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -62,6 +64,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     env_file: ../.env
+    volumes:
+      - ../terraform-demo:/app/terraform-demo:ro
     command: sh -c "python scripts/wait_for_db.py && python -m scraper.scheduler"
     depends_on:
       postgres:
