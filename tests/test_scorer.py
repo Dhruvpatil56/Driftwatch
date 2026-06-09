@@ -1,4 +1,8 @@
-"""Tests for impact scoring."""
+"""Tests for impact scoring (built-in Python fallback rules).
+
+These exercise ``score()`` with OPA disabled (no ``OPA_URL``), so the built-in
+fallback rules apply.
+"""
 
 from engine.scorer.scorer import score, score_all
 from models.drift import (
@@ -20,11 +24,17 @@ def _drift(drift_type, field="instance_type", actual="m5.large"):
     )
 
 
-def test_instance_type_drift_is_low_risk_unknown_cost():
+def test_instance_type_drift_is_medium_risk_unknown_cost():
     d = score(_drift(INFRASTRUCTURE_DRIFT))
-    assert d.risk_impact == "Low"
+    assert d.risk_impact == "Medium"
     assert d.cost_impact == "Unknown"
-    assert d.governance_impact == "None"
+    assert "instance type" in d.governance_impact.lower()
+
+
+def test_tag_drift_is_medium_risk():
+    d = score(_drift(INFRASTRUCTURE_DRIFT, field="tags", actual="{'Env': 'prod'}"))
+    assert d.risk_impact == "Medium"
+    assert "tag" in d.governance_impact.lower()
 
 
 def test_ownership_drift_is_medium_risk_with_governance_note():
@@ -38,8 +48,20 @@ def test_configuration_drift_resource_deleted_is_high_risk():
     assert d.risk_impact == "High"
 
 
-def test_open_ingress_is_high_risk_governance_flag():
+def test_ssh_open_to_world_is_critical():
     d = score(_drift(INFRASTRUCTURE_DRIFT, field="ingress", actual="tcp:22-22:0.0.0.0/0"))
+    assert d.risk_impact == "Critical"
+    assert "0.0.0.0/0" in d.governance_impact
+
+
+def test_rdp_open_to_world_is_critical():
+    d = score(_drift(INFRASTRUCTURE_DRIFT, field="ingress", actual="tcp:3389-3389:0.0.0.0/0"))
+    assert d.risk_impact == "Critical"
+
+
+def test_other_open_ingress_is_high_risk():
+    # Open to the world but not an admin port (e.g. HTTPS) -> High, not Critical.
+    d = score(_drift(INFRASTRUCTURE_DRIFT, field="ingress", actual="tcp:443-443:0.0.0.0/0"))
     assert d.risk_impact == "High"
     assert "0.0.0.0/0" in d.governance_impact
 
@@ -54,4 +76,4 @@ def test_score_all_mutates_every_drift():
     drifts = [_drift(OWNERSHIP_DRIFT, field="(resource)"), _drift(INFRASTRUCTURE_DRIFT)]
     score_all(drifts)
     assert drifts[0].risk_impact == "Medium"
-    assert drifts[1].risk_impact == "Low"
+    assert drifts[1].risk_impact == "Medium"  # instance_type drift

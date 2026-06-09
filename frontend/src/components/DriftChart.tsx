@@ -23,7 +23,7 @@ export default function DriftChart({ summary }: Props) {
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-      <div className="mb-4 text-sm font-medium text-slate-300">Drift by type</div>
+      <div className="mb-4 text-base font-semibold text-white">Drift by type</div>
       <div style={{ width: "100%", height: 300 }}>
         {data.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">

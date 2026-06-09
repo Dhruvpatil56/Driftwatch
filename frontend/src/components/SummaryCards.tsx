@@ -21,10 +21,12 @@ function Card({
       className="rounded-xl border border-l-2 border-slate-800 bg-slate-900/60 px-4 py-3.5"
       style={{ borderLeftColor: accentHex }}
     >
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
         {label}
       </div>
-      <div className={`mt-2 text-4xl font-semibold tabular-nums ${valueClass}`}>
+      <div
+        className={`mt-2 text-[42px] font-bold leading-none tabular-nums ${valueClass}`}
+      >
         {value}
       </div>
     </div>

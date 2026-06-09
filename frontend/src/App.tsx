@@ -123,7 +123,7 @@ export default function App() {
         </section>
 
         <section>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
+          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-white">
             Drift events
             <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400 tabular-nums">
               {events.length}

@@ -67,6 +67,8 @@ def _resource_type(address: str) -> str:
 
 
 # --- built-in fallback rules (used when OPA is unavailable) -----------------
+# Mirrors policies/rules.rego closely so risk levels are stable whether or not
+# the OPA sidecar is reachable.
 def _score_python(drift: DriftResult) -> DriftResult:
     drift.risk_impact = "Low"
     drift.governance_impact = "None"
@@ -80,12 +82,34 @@ def _score_python(drift: DriftResult) -> DriftResult:
         # Terraform-managed resource deleted out of band.
         drift.risk_impact = "High"
     elif drift.field in ("ingress", "egress"):
-        if _OPEN_CIDR in str(drift.actual):
+        actual = str(drift.actual)
+        if _OPEN_CIDR in actual and _exposes_admin_port(actual):
+            # SSH (22) / RDP (3389) open to the world -> worst case.
+            drift.risk_impact = "Critical"
+            drift.governance_impact = (
+                f"Security group {drift.field} exposes SSH/RDP to {_OPEN_CIDR}"
+            )
+        elif _OPEN_CIDR in actual:
             drift.risk_impact = "High"
             drift.governance_impact = (
                 f"Security group {drift.field} open to {_OPEN_CIDR}"
             )
         else:
             drift.risk_impact = "Medium"
+    elif drift.field == "instance_type":
+        # EC2 resized out of band — cost/behaviour impact.
+        drift.risk_impact = "Medium"
+        drift.governance_impact = "EC2 instance type changed out of band"
+    elif drift.field == "tags":
+        # Tag drift (e.g. unrecognized/governance tags) — policy-relevant.
+        drift.risk_impact = "Medium"
+        drift.governance_impact = "Resource tags changed out of band"
 
     return drift
+
+
+# Normalized SG rules render an exact single port as ":<port>-" (see
+# engine/parser/normalize.py::_rule_key), e.g. "tcp:22-22:0.0.0.0/0". Anchoring
+# on ":22-"/":3389-" avoids matching e.g. 2222.
+def _exposes_admin_port(actual: str) -> bool:
+    return ":22-" in actual or ":3389-" in actual

@@ -29,8 +29,8 @@ def test_infrastructure_drift_on_instance_type():
     assert d.drift_type == INFRASTRUCTURE_DRIFT
     assert d.field == "instance_type"
     assert (d.desired, d.recorded, d.actual) == ("t3.micro", "t3.micro", "m5.large")
-    # scored
-    assert d.risk_impact == "Low"
+    # scored — instance_type drift is Medium risk (see engine/scorer)
+    assert d.risk_impact == "Medium"
     assert d.cost_impact == "Unknown"
 
 

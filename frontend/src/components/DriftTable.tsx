@@ -58,9 +58,9 @@ function Sparkle() {
 // --- pills ------------------------------------------------------------------
 function TypePill({ type }: { type: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-700/60 bg-slate-800/60 px-2 py-0.5 text-xs font-medium text-slate-300">
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-700/60 bg-slate-800/60 px-2.5 py-1 text-[13px] font-medium text-slate-200">
       <span
-        className="h-1.5 w-1.5 rounded-full"
+        className="h-2 w-2 rounded-full"
         style={{ backgroundColor: typeHexFor(type) }}
       />
       {type}
@@ -71,7 +71,7 @@ function TypePill({ type }: { type: string }) {
 function RiskPill({ risk }: { risk: string | null }) {
   return (
     <span
-      className={`inline-flex w-[72px] justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${riskClassFor(
+      className={`inline-flex w-[84px] justify-center rounded-full px-3 py-1 text-[13px] font-bold ${riskClassFor(
         risk
       )}`}
     >
@@ -88,10 +88,10 @@ function ArrowValue({
   to: string | null;
 }) {
   return (
-    <span className="flex items-center gap-1.5 font-mono text-xs">
-      <span className="text-slate-500">{from ?? "—"}</span>
-      <span className="text-slate-600">→</span>
-      <span className="text-slate-200">{to ?? "—"}</span>
+    <span className="flex items-center gap-2 font-mono text-sm">
+      <span className="text-slate-400">{from ?? "—"}</span>
+      <span className="text-base font-semibold text-sky-400">→</span>
+      <span className="font-medium text-white">{to ?? "—"}</span>
     </span>
   );
 }
@@ -100,10 +100,14 @@ function ArrowValue({
 function DetailField({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
   return (
     <div>
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
         {label}
       </div>
-      <div className={`mt-0.5 text-sm text-slate-200 ${mono ? "font-mono" : ""}`}>
+      <div
+        className={`mt-1 text-sm ${
+          mono ? "font-mono text-white" : "text-slate-200"
+        }`}
+      >
         {value && value !== "" ? value : "—"}
       </div>
     </div>
@@ -127,7 +131,7 @@ function Explanation({ state }: { state: ExplainState | undefined }) {
           Could not generate an explanation right now.
         </div>
       ) : (
-        <p className="text-sm leading-relaxed text-slate-300">{state.text}</p>
+        <p className="text-sm leading-[1.6] text-slate-200">{state.text}</p>
       )}
     </div>
   );
@@ -270,10 +274,10 @@ export default function DriftTable({ events }: Props) {
               <Chevron open={open} />
 
               <div className="min-w-0 flex-1">
-                <div className="truncate font-mono text-sm font-semibold text-slate-100">
+                <div className="truncate font-mono text-[15px] font-semibold text-white">
                   {event.resource_address}
                 </div>
-                <div className="mt-1 flex items-center gap-2">
+                <div className="mt-1.5 flex items-center gap-2">
                   <TypePill type={event.drift_type} />
                   {event.field && (
                     <span className="font-mono text-xs text-slate-500">
@@ -290,7 +294,7 @@ export default function DriftTable({ events }: Props) {
               <RiskPill risk={event.risk_impact} />
 
               <span
-                className="hidden w-24 shrink-0 text-right text-xs text-slate-500 sm:block"
+                className="hidden w-24 shrink-0 text-right text-[13px] text-slate-500 sm:block"
                 title={absoluteTime(event.detected_at)}
               >
                 {relativeTime(event.detected_at)}

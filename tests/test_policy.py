@@ -75,9 +75,9 @@ def test_unreachable_opa_falls_back_to_python(monkeypatch):
         raise httpx.ConnectError("sidecar down")
 
     monkeypatch.setattr(httpx, "post", boom)
-    # ingress open to the world -> Python fallback rule = High
+    # SSH open to the world -> Python fallback rule = Critical
     d = score(_drift(field="ingress", actual="tcp:22-22:0.0.0.0/0"))
-    assert d.risk_impact == "High"
+    assert d.risk_impact == "Critical"
     assert "0.0.0.0/0" in d.governance_impact
 
 
