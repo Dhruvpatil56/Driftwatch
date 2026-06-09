@@ -36,10 +36,10 @@ _CACHE_TTL_SECONDS = 24 * 60 * 60  # 1 day
 _CACHE_PREFIX = "driftwatch:explain:"
 
 _SYSTEM_PROMPT = (
-    "You are a cloud infrastructure governance assistant. Given one Terraform "
-    "drift finding, explain in 2-3 short sentences: what drifted, why it "
-    "matters, and the most probable cause. Be concrete and concise. Do not "
-    "suggest remediation commands."
+    "You are a cloud infrastructure analyst. Given a Terraform drift finding, "
+    "respond in exactly 2 sentences. Sentence 1: what changed and the risk level. "
+    "Sentence 2: the most probable cause. "
+    "Be direct and specific. No remediation steps. No bullet points. No headers."
 )
 
 # Lazily-created Redis client; None until first use, False if unavailable.

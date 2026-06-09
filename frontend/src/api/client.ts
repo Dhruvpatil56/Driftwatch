@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // API base comes from VITE_API_URL (set via env / docker), with a local default.
-const baseURL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+const baseURL = "/api";
 
 const api = axios.create({ baseURL });
 
