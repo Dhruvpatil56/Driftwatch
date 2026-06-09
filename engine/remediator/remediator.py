@@ -4,7 +4,8 @@ Output is a ``RemediationPatch`` (advisory only). The remediator is strictly
 *non-destructive*:
 
   * **Infrastructure Drift** (attribute changed out of band) -> patch the
-    attribute in HCL to match the live value (adopt reality).
+    attribute in HCL back to the desired (Terraform) value, restoring the
+    resource to its intended state.
   * **Configuration Drift**:
       - attribute-level -> patch the attribute back to the desired value;
       - resource-level (declared in Terraform, missing in the cloud) -> a
@@ -40,8 +41,8 @@ _FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
 def remediate(drift: DriftResult) -> RemediationPatch | None:
     """Return a proposed patch for ``drift``, or ``None`` if none is safe."""
     if drift.drift_type == INFRASTRUCTURE_DRIFT:
-        # Adopt the live value into Terraform.
-        return _attribute_patch(drift, target=drift.actual)
+        # Restore the resource to its desired (Terraform) value.
+        return _attribute_patch(drift, target=drift.desired)
     if drift.drift_type == CONFIGURATION_DRIFT:
         return _configuration_patch(drift)
     if drift.drift_type == OWNERSHIP_DRIFT:
@@ -61,13 +62,14 @@ def _attribute_patch(drift: DriftResult, *, target: str | None) -> RemediationPa
     rendered = _hcl_value(target)
     patch_hcl = (
         f"# DriftWatch remediation for {drift.resource_address}\n"
-        f"# {drift.field}: {drift.desired} -> {target}\n"
+        f"# {drift.field}: restore to {target} (drifted to {drift.actual})\n"
         f'resource "{rtype}" "{rname}" {{\n'
         f"  {drift.field} = {rendered}\n"
         f"}}"
     )
     description = (
-        f"Set {drift.field} on {rtype}.{rname} to {target} (was {drift.desired})."
+        f"Restore {drift.field} on {rtype}.{rname} to {target} "
+        f"(drifted to {drift.actual})."
     )
     return RemediationPatch(
         resource_address=drift.resource_address,

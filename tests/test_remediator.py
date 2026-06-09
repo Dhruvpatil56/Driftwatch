@@ -33,14 +33,16 @@ def _drift(**kw):
 
 
 # --- Infrastructure Drift ---------------------------------------------------
-def test_infrastructure_drift_patches_attribute_to_actual():
-    patch = remediate(_drift())
+def test_infrastructure_drift_patches_attribute_to_desired():
+    # Restore to the desired (Terraform) value, NOT the drifted live value.
+    patch = remediate(_drift())  # desired t3.micro, actual m5.large
     assert patch is not None
     assert patch.resource_address == "aws_instance.web"
     assert 'resource "aws_instance" "web"' in patch.patch_hcl
-    assert 'instance_type = "m5.large"' in patch.patch_hcl  # adopts live value
+    assert 'instance_type = "t3.micro"' in patch.patch_hcl  # desired value
+    assert 'instance_type = "m5.large"' not in patch.patch_hcl  # never the drift
     assert patch.import_command is None
-    assert "m5.large" in patch.description
+    assert "t3.micro" in patch.description
 
 
 def test_infrastructure_drift_indexed_address_strips_index_in_block():

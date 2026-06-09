@@ -1,22 +1,19 @@
 # DriftWatch — Build Status
 
-**Current: Sprint 6 complete** — dashboard redesign (Goal 1) + GitOps PR generation (Goal 2).
+**Current: Sprint 6 complete** — dashboard redesign + GitOps PR generation, plus a typography/scoring polish pass.
 
-## Latest changes (Sprint 6 — Goal 2: GitOps PR generation)
-- **Remediator** (`engine/remediator/` → `RemediationPatch` in `models/remediation.py`): Infrastructure Drift → patch attribute to live value; Configuration Drift → restore attribute, or re-create note for a deleted resource; Ownership Drift → new resource block + `terraform import`; State/Policy/unknown → `None`. **Never emits a destroy.**
-- **GitHub PR** (`api/github_pr.py`): branch `drift-fix/{addr}-{uuid}` off `drift-remediation`, appends patch to `terraform-demo/main.tf`, opens a PR (title `[DriftWatch] Fix drift on {addr}`, body = drift summary + HCL + import cmd + risk, footer "requires human review before merge"). `GITHUB_TOKEN`/`GITHUB_REPO` from env; unset or any error → `None` (no network).
-- **Endpoint** `POST /api/drift/{id}/remediate` → `{pr_url, patch}`; patch-only with `pr_url: null` when GitHub is off/fails; `{patch: null, detail}` when no safe remediation (e.g. State Drift); 404 on unknown id.
-- **Frontend**: "Fix via PR" button in the expanded drift card → shows description, patch HCL, import command, and a "View pull request →" link (or a "set GITHUB_TOKEN" hint).
-- Hard rules honored: never auto-merge/apply/destroy; PR is the gate; endpoint returns patch even without a token. Tests: **111 pass + 7 skipped** (added `test_remediator.py`, `test_github_pr.py`, remediate endpoint tests); all prior 91 still green. Frontend builds clean.
+## Latest changes (remediator restore-to-desired fix)
+- **Bug fix** (`engine/remediator/remediator.py`): Infrastructure Drift patches now restore the attribute to **`drift.desired`** (the Terraform value), not `drift.actual` (the drifted live value). E.g. `instance_type` desired `t3.micro` / actual `t3.large` → patch emits `instance_type = "t3.micro"`. Patch comment/description reworded to "restore to … (drifted to …)". Config/Ownership/State/Policy paths unchanged; still never destructive.
+- Updated the test that encoded the old behavior; synced one Rego test case to the (intentional) `rules.rego` change of EC2-type-not-approved → Medium. Full suite **121 pass**.
 
-## Sprint 6 — Goal 1: dashboard redesign
-- Modern dark SaaS look (Datadog/Linear feel). **No new libraries** — still React + TS + Tailwind + Recharts + Axios. `tsc` strict + vite build clean.
-- **Inter** loaded in `index.html` only; resource addresses/IDs in `font-mono`.
-- **Header** (`App.tsx`): name left, right-aligned actions, "Updated Nm ago" with a pulse dot that animates while auto-refreshing; sticky/backdrop-blur top bar.
-- **Summary cards**: label above a large number, colour only on the number, subtle left-border accent per risk; Total card neutral.
-- **Drift table → expandable mini-cards** (`DriftTable.tsx`): mono-bold address, drift-type pill (colored dot), `desired → actual` arrow, fixed-width risk pill, relative time (absolute on hover). Click a row to expand → full details grid + **inline AI explanation** fetched lazily from `GET /api/drift/{id}/explain` with a loading state. (Fix button + PR link slot reserved for Goal 2.)
-- **Bar chart**: taller (300px), per-drift-type bar colors via `Cell`, axis labels ("Drift type"/"Events"), rounded bars.
-- `theme.ts` gained per-type hues, `relativeTime`/`absoluteTime`, and risk text/border helpers; `client.ts` gained `explainDrift(id)`. API proxy/wiring unchanged.
+## Earlier changes (typography + scoring fixes)
+- **Typography**: Inter now applied globally (`:root`/`body` in `index.css`, not just preflight). Larger/bolder resource address (15px/600 mono white); bigger drift-type pill; `desired → actual` value white with a bold `→`; larger/bolder risk badge; expanded labels uppercase 11px/0.05em muted with 14px mono/white values; AI text 14px/1.6 muted-white; summary numbers 42px/700, labels 11px uppercase muted; section headers 16px/600 white. Build clean, no new libs.
+- **Risk scoring** (`engine/scorer/scorer.py` Python fallback, now matching the Rego): SG port 22/3389 open to `0.0.0.0/0` → **Critical** (was High); Infrastructure Drift on `instance_type` → **Medium** (was Low); tag drift → **Medium** (was Low). OPA decision application confirmed correct end-to-end; both paths now agree.
+- Tests updated to the new levels; full suite **121 pass** (incl. the 7 live-Rego cases). Note: `scan_and_persist` matches events by `(address, field, type, desired, actual)` — not risk — so already-stored rows keep their old `risk_impact` until re-detected.
+
+## Sprint 6 (dashboard redesign + GitOps PRs)
+- **Goal 1 — redesign**: dark SaaS look (Datadog/Linear), Inter, mono addresses, sticky header w/ "updated Nm ago" + auto-refresh pulse, summary cards (colored number + risk accent), drift table as **expandable mini-cards** with inline AI explanation (`GET /drift/{id}/explain`), taller per-type bar chart. No new libraries.
+- **Goal 2 — remediation**: `engine/remediator/` → `RemediationPatch` (Infra→patch to live value, Config→restore/recreate note, Ownership→block + `terraform import`, State/Policy→None, **never destroys**); `api/github_pr.py` opens a PR off `drift-remediation` (token from env, `None` if unset/failed); `POST /drift/{id}/remediate` → `{pr_url, patch}`; "Fix via PR" button in the expanded card.
 
 ## Earlier sprints (one-liners)
 - **S1** — three-way diff engine, drift classifier, AWS provider, normalization.
@@ -46,7 +43,7 @@ AWSProvider ─┘                                                            �
 
 ## Run
 ```bash
-python -m pytest                        # 111 pass + 7 skipped (Rego tests need the opa binary)
+python -m pytest                        # 121 pass (114 + 7 Rego cases that need the opa binary)
 python main.py                          # CLI, live AWS (ap-south-1)
 DRIFTWATCH_OFFLINE=1 python main.py     # CLI, demo fixture
 cd docker && cp ../.env.example ../.env && docker compose up   # 9 services

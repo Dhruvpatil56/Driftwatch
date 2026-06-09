@@ -186,11 +186,11 @@ _REGO_CASES = [
          "field": "tags", "actual": "{'Name': 'data'}", "resource_address": "aws_s3_bucket.data"},
         "Medium",
     ),
-    # EC2 type not in the approved list -> High
+    # EC2 type not in the approved list -> Medium
     (
         {"resource_type": "aws_instance", "drift_type": "Infrastructure Drift",
          "field": "instance_type", "actual": "m5.large", "resource_address": "aws_instance.web"},
-        "High",
+        "Medium",
     ),
     # EC2 type that IS approved -> Low
     (
