@@ -15,3 +15,9 @@ terraform-demo/.terraform.lock.hcl/
 CLAUDE.md
 scripts/simulate_drift.sh
 scripts/restore_state.sh
+output.md
+Claude.MD
+terraform-demo/terraform.tfstate.backup
+__pycache__/
+*.pyc
+*.pyo
