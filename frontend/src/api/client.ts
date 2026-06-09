@@ -28,11 +28,37 @@ export interface Summary {
   by_type: Record<string, number>;
 }
 
+export interface Explanation {
+  id: string;
+  resource_address: string;
+  drift_type: string;
+  explanation: string;
+}
+
 export const getDrift = () =>
   api.get<DriftEvent[]>("/drift").then((r) => r.data);
 
 export const getSummary = () =>
   api.get<Summary>("/drift/summary").then((r) => r.data);
+
+export const explainDrift = (id: string) =>
+  api.get<Explanation>(`/drift/${id}/explain`).then((r) => r.data);
+
+export interface RemediationPatch {
+  resource_address: string;
+  patch_hcl: string;
+  import_command: string | null;
+  description: string;
+}
+
+export interface RemediateResult {
+  pr_url: string | null;
+  patch: RemediationPatch | null;
+  detail?: string;
+}
+
+export const remediateDrift = (id: string) =>
+  api.post<RemediateResult>(`/drift/${id}/remediate`).then((r) => r.data);
 
 export const simulateDrift = () =>
   api.post("/drift/simulate").then((r) => r.data);

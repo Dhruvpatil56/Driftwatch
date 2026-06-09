@@ -9,5 +9,21 @@ body,
 }
 
 body {
-  @apply bg-slate-950 text-slate-100;
+  @apply bg-slate-950 text-slate-100 antialiased;
+  font-feature-settings: "cv11", "ss01";
+  font-variation-settings: normal;
+}
+
+/* Thin, unobtrusive scrollbars to match the dark SaaS feel. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 9999px;
 }

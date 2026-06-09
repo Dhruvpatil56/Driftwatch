@@ -5,7 +5,8 @@ Endpoints:
   GET  /api/drift          — current (unresolved) drift events (instant);
                              refreshes in the background
   GET  /api/drift/summary  — counts by risk and by type
-  GET  /api/drift/{id}/explain — plain-English (Groq) explanation of one event
+  GET  /api/drift/{id}/explain   — plain-English (Groq) explanation of one event
+  POST /api/drift/{id}/remediate — propose a Terraform patch + open a GitHub PR
   POST /api/drift/simulate — create a demo drift event
   POST /api/drift/restore  — clear simulated drift
 """
@@ -59,6 +60,14 @@ def get_summary(db: Session = Depends(get_db)) -> dict:
 @router.get("/drift/{drift_id}/explain")
 def explain_drift(drift_id: str, db: Session = Depends(get_db)) -> dict:
     result = services.explain_event(db, drift_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="drift event not found")
+    return result
+
+
+@router.post("/drift/{drift_id}/remediate")
+def remediate_drift(drift_id: str, db: Session = Depends(get_db)) -> dict:
+    result = services.remediate_event(db, drift_id)
     if result is None:
         raise HTTPException(status_code=404, detail="drift event not found")
     return result

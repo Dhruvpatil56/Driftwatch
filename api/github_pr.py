@@ -1,0 +1,154 @@
+"""GitHub PR generation for a remediation patch (Sprint 6, Goal 2).
+
+Given a ``RemediationPatch``, open a pull request proposing the change. The PR is
+the **human approval gate**: DriftWatch never merges, applies, or destroys.
+
+Flow (pure GitHub REST API, no local clone):
+  1. resolve the SHA of the base branch (``drift-remediation``);
+  2. create branch ``drift-fix/{resource_address}-{short_uuid}`` from it;
+  3. append ``patch_hcl`` to ``terraform-demo/main.tf`` on that branch;
+  4. open a PR from the new branch into ``drift-remediation``.
+
+Fully optional and fail-safe:
+  * ``GITHUB_TOKEN`` or ``GITHUB_REPO`` unset -> return ``None`` immediately
+    (no network);
+  * any API error (missing base branch, auth, rate limit) -> return ``None``.
+
+Config is read from ``os.environ`` so local/test runs default to disabled and
+never hit the network.
+"""
+
+from __future__ import annotations
+
+import base64
+import logging
+import os
+import re
+import uuid
+
+import httpx
+
+from models.drift import DriftResult
+from models.remediation import RemediationPatch
+
+logger = logging.getLogger("driftwatch.github_pr")
+
+_API = "https://api.github.com"
+_BASE_BRANCH = "drift-remediation"
+_FILE_PATH = "terraform-demo/main.tf"
+_TIMEOUT = 15.0
+
+
+def open_pr(patch: RemediationPatch, drift: DriftResult) -> str | None:
+    """Open a remediation PR and return its URL, or ``None`` if unavailable."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo = os.environ.get("GITHUB_REPO", "").strip()
+    if not token or not repo:
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    branch = f"drift-fix/{_slug(patch.resource_address)}-{uuid.uuid4().hex[:8]}"
+    try:
+        with httpx.Client(base_url=_API, headers=headers, timeout=_TIMEOUT) as client:
+            base_sha = _branch_sha(client, repo, _BASE_BRANCH)
+            _create_branch(client, repo, branch, base_sha)
+            _append_patch(client, repo, branch, patch)
+            return _open_pull(client, repo, branch, patch, drift)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("github PR creation failed: %s", exc)
+        return None
+
+
+# --- REST steps -------------------------------------------------------------
+def _branch_sha(client: httpx.Client, repo: str, branch: str) -> str:
+    resp = client.get(f"/repos/{repo}/git/ref/heads/{branch}")
+    resp.raise_for_status()
+    return resp.json()["object"]["sha"]
+
+
+def _create_branch(client: httpx.Client, repo: str, branch: str, sha: str) -> None:
+    resp = client.post(
+        f"/repos/{repo}/git/refs",
+        json={"ref": f"refs/heads/{branch}", "sha": sha},
+    )
+    resp.raise_for_status()
+
+
+def _append_patch(client: httpx.Client, repo: str, branch: str, patch: RemediationPatch) -> None:
+    """Append the proposed HCL to terraform-demo/main.tf on ``branch``."""
+    current = client.get(f"/repos/{repo}/contents/{_FILE_PATH}", params={"ref": branch})
+    current.raise_for_status()
+    meta = current.json()
+    existing = base64.b64decode(meta["content"]).decode("utf-8")
+
+    block = f"\n\n# --- DriftWatch proposed remediation (review before merge) ---\n{patch.patch_hcl}\n"
+    new_content = existing + block
+
+    resp = client.put(
+        f"/repos/{repo}/contents/{_FILE_PATH}",
+        json={
+            "message": f"[DriftWatch] propose fix for {patch.resource_address}",
+            "content": base64.b64encode(new_content.encode("utf-8")).decode("ascii"),
+            "sha": meta["sha"],
+            "branch": branch,
+        },
+    )
+    resp.raise_for_status()
+
+
+def _open_pull(
+    client: httpx.Client,
+    repo: str,
+    branch: str,
+    patch: RemediationPatch,
+    drift: DriftResult,
+) -> str:
+    resp = client.post(
+        f"/repos/{repo}/pulls",
+        json={
+            "title": f"[DriftWatch] Fix drift on {patch.resource_address}",
+            "head": branch,
+            "base": _BASE_BRANCH,
+            "body": _pr_body(patch, drift),
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()["html_url"]
+
+
+# --- helpers ----------------------------------------------------------------
+def _pr_body(patch: RemediationPatch, drift: DriftResult) -> str:
+    lines = [
+        "## Drift summary",
+        f"- **Resource:** `{drift.resource_address}`",
+        f"- **Type:** {drift.drift_type}",
+        f"- **Risk:** {drift.risk_impact}",
+        f"- **Field:** {drift.field}",
+        f"- **Desired:** `{drift.desired}`",
+        f"- **Actual:** `{drift.actual}`",
+        "",
+        "## Proposed Terraform change",
+        "```hcl",
+        patch.patch_hcl,
+        "```",
+    ]
+    if patch.import_command:
+        lines += ["", "## Import command", "```bash", patch.import_command, "```"]
+    lines += [
+        "",
+        f"> {patch.description}",
+        "",
+        "---",
+        "_Generated by DriftWatch — requires human review before merge._",
+    ]
+    return "\n".join(lines)
+
+
+def _slug(address: str) -> str:
+    """Make a resource address safe for a git branch name."""
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", address).strip("-./")
+    return slug or "resource"

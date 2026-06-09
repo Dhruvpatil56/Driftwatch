@@ -17,7 +17,14 @@ os.environ["DRIFTWATCH_OFFLINE"] = "1"
 os.environ["TFSTATE_PATH"] = os.path.join(_HERE, "fixtures", "demo.tfstate")
 # Neutralize Sprint 5 external integrations so the startup scan never reaches
 # OPA / Groq / Slack / Redis — even if a developer has them exported.
-for _var in ("OPA_URL", "GROQ_API_KEY", "REDIS_URL", "SLACK_WEBHOOK_URL"):
+for _var in (
+    "OPA_URL",
+    "GROQ_API_KEY",
+    "REDIS_URL",
+    "SLACK_WEBHOOK_URL",
+    "GITHUB_TOKEN",
+    "GITHUB_REPO",
+):
     os.environ[_var] = ""
 
 import uuid
@@ -100,3 +107,22 @@ def test_explain_endpoint_returns_explanation(client):
 def test_explain_unknown_id_returns_404(client):
     assert client.get("/api/drift/not-a-uuid/explain").status_code == 404
     assert client.get(f"/api/drift/{uuid.uuid4()}/explain").status_code == 404
+
+
+def test_remediate_returns_patch_without_github(client):
+    # Simulated drift is an Infrastructure Drift (instance_type t3.micro->m5.large).
+    created = client.post("/api/drift/simulate").json()["created"]
+    resp = client.post(f"/api/drift/{created['id']}/remediate")
+    assert resp.status_code == 200
+    body = resp.json()
+    # No GITHUB_TOKEN in tests -> patch returned, no PR opened.
+    assert body["pr_url"] is None
+    assert body["patch"] is not None
+    assert body["patch"]["resource_address"] == created["resource_address"]
+    assert "instance_type" in body["patch"]["patch_hcl"]
+    client.post("/api/drift/restore")
+
+
+def test_remediate_unknown_id_returns_404(client):
+    assert client.post("/api/drift/not-a-uuid/remediate").status_code == 404
+    assert client.post(f"/api/drift/{uuid.uuid4()}/remediate").status_code == 404

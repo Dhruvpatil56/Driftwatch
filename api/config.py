@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     slack_webhook_url: str = ""
+    github_token: str = ""
+    github_repo: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

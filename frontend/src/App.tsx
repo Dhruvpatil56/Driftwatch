@@ -10,6 +10,7 @@ import {
 import DriftChart from "./components/DriftChart";
 import DriftTable from "./components/DriftTable";
 import SummaryCards from "./components/SummaryCards";
+import { absoluteTime, relativeTime } from "./theme";
 
 const REFRESH_MS = 30_000;
 
@@ -18,15 +19,21 @@ export default function App() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setRefreshing(true);
     try {
       const [drift, sum] = await Promise.all([getDrift(), getSummary()]);
       setEvents(drift);
       setSummary(sum);
+      setLastRefreshed(new Date().toISOString());
       setError(null);
-    } catch (e) {
+    } catch {
       setError("Failed to reach the API. Is it running?");
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
@@ -49,41 +56,60 @@ export default function App() {
 
   return (
     <div className="min-h-full">
-      <div className="mx-auto max-w-7xl px-6 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-100">DriftWatch</h1>
-            <p className="text-sm text-slate-400">
-              Terraform-aware cloud drift dashboard
-            </p>
+      <header className="sticky top-0 z-10 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
+            <h1 className="text-lg font-semibold tracking-tight text-slate-100">
+              DriftWatch
+            </h1>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => runAction(simulateDrift)}
-              disabled={busy}
-              className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-            >
-              Simulate Drift
-            </button>
-            <button
-              onClick={() => runAction(restoreState)}
-              disabled={busy}
-              className="rounded-md bg-slate-700 px-3 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50"
-            >
-              Restore State
-            </button>
-            <button
-              onClick={() => runAction(async () => undefined)}
-              disabled={busy}
-              className="rounded-md border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-50"
-            >
-              Refresh
-            </button>
-          </div>
-        </header>
 
+          <div className="flex items-center gap-4">
+            <div
+              className="flex items-center gap-2 text-xs text-slate-500"
+              title={absoluteTime(lastRefreshed)}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  refreshing ? "animate-pulse bg-sky-400" : "bg-slate-600"
+                }`}
+              />
+              {lastRefreshed
+                ? `Updated ${relativeTime(lastRefreshed)}`
+                : "Loading…"}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => runAction(simulateDrift)}
+                disabled={busy}
+                className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-sky-500 disabled:opacity-50"
+              >
+                Simulate Drift
+              </button>
+              <button
+                onClick={() => runAction(restoreState)}
+                disabled={busy}
+                className="rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-800 disabled:opacity-50"
+              >
+                Restore State
+              </button>
+              <button
+                onClick={() => runAction(async () => undefined)}
+                disabled={busy}
+                className="rounded-md border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 py-6">
         {error && (
-          <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="mb-5 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}
@@ -97,12 +123,15 @@ export default function App() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-slate-400">
-            Drift events ({events.length})
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
+            Drift events
+            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400 tabular-nums">
+              {events.length}
+            </span>
           </h2>
           <DriftTable events={events} />
         </section>
-      </div>
+      </main>
     </div>
   );
 }

@@ -21,12 +21,13 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api import notifications
+from api import github_pr, notifications
 from api.config import settings
 from api.models.db import DriftEvent
 from engine.diff import reconcile
 from engine.explainer import explain as explain_drift
 from engine.parser import parse_tfstate
+from engine.remediator import remediate
 from engine.resolver import resolve_hcl
 from models.drift import DriftResult
 from providers.aws import AWSProvider, build_actual
@@ -164,6 +165,31 @@ def explain_event(db: Session, drift_id: str) -> dict | None:
         "drift_type": event.drift_type,
         "explanation": text,
     }
+
+
+def remediate_event(db: Session, drift_id: str) -> dict | None:
+    """Generate a remediation patch for one event and (optionally) open a PR.
+
+    Returns ``None`` if the id is unknown. If no safe patch exists (e.g. State
+    Drift), returns ``{"pr_url": None, "patch": None, "detail": ...}``. If a PR
+    cannot be opened (GitHub disabled or failed), returns the patch with
+    ``pr_url: None``. Never applies, merges, or destroys anything.
+    """
+    event = get_event(db, drift_id)
+    if event is None:
+        return None
+
+    drift = _event_to_result(event)
+    patch = remediate(drift)
+    if patch is None:
+        return {
+            "pr_url": None,
+            "patch": None,
+            "detail": f"No remediation available for {event.drift_type}.",
+        }
+
+    pr_url = github_pr.open_pr(patch, drift)
+    return {"pr_url": pr_url, "patch": patch.model_dump()}
 
 
 def _event_to_result(e: DriftEvent) -> DriftResult:

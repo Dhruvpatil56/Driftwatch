@@ -19,73 +19,142 @@ AWS Region: ap-south-1 (Mumbai) — clean account, zero prior resources.
 - Sprint 1 DONE — three-way diff engine, drift classifier, AWS provider, 53 tests
 - Sprint 2 DONE — FastAPI + Postgres + Docker Compose, 8 services
 - Sprint 3 DONE — React dashboard, live reconciliation, Simulate/Restore buttons
-- Sprint 4 CURRENT — Resource Resolver (count, for_each)
-- Sprint 5 NEXT — OPA policies + Groq explanation + Slack alerts
-- Sprint 6 — GitOps PR generation
-- Sprint 7 — Polish + README + resume bullets
+- Sprint 4 DONE — Resource Resolver, count + for_each support, wired into pipeline
+- Sprint 5 DONE — OPA policy engine, Groq drift explanation, Slack alerting, 91 tests
+- Sprint 6 CURRENT — Dashboard redesign + GitOps PR generation
 
 ---
 
 ## What is Working Right Now
 
 - python main.py — CLI three-way reconciliation against live AWS
-- DRIFTWATCH_OFFLINE=1 python main.py — offline demo using tests/fixtures/demo.tfstate
-- docker compose up — all 8 services start cleanly
-- GET /api/drift — triggers fresh reconciliation via BackgroundTasks, returns stored results
+- DRIFTWATCH_OFFLINE=1 python main.py — offline demo
+- docker compose up — all 9 services start cleanly
+- GET /api/drift — fresh reconciliation via BackgroundTasks
 - GET /api/drift/summary — drift counts by risk and type
-- POST /api/drift/simulate — creates fake drift event in DB for demo
+- GET /api/drift/{id}/explain — Groq LLM explanation (cached in Redis)
+- POST /api/drift/simulate — fake drift event for demo
 - POST /api/drift/restore — clears simulated drift
-- Dashboard at :3000 — summary cards, drift table, bar chart, Simulate/Restore/Refresh buttons
-- scripts/simulate_drift.sh — real AWS drift scenarios (EC2 resize, SG port 22, S3 tag)
+- Dashboard at :3000 — summary cards, drift table, bar chart
+- scripts/simulate_drift.sh — real AWS drift scenarios
 - scripts/restore_state.sh — restores clean AWS state
+- OPA sidecar at :8181 — policy evaluation with Python fallback
+- Groq explanation — 2 sentence balanced output, cached in Redis
+- Slack alerting — Critical/High drift events, optional
 
 ---
 
-## Current Sprint: Sprint 4 — Resource Resolver
+## Current Sprint: Sprint 6
 
-### Problem
-
-The engine currently only handles simple Terraform resources:
-resource "aws_instance" "web" {}
-
-It does NOT handle:
-resource "aws_instance" "web" {
-count = 3
-} # produces aws_instance.web[0], aws_instance.web[1], aws_instance.web[2]
-
-    resource "aws_instance" "web" {
-      for_each = { prod = "t3.large", staging = "t3.micro" }
-    }
-    # produces aws_instance.web["prod"], aws_instance.web["staging"]
-
-### Goal
-
-Build engine/resolver/ as a dedicated service that maps:
-Terraform resource_address → AWS resource ID
-
-### Build Order
-
-1. Handle simple resources (already works, verify)
-2. Handle count — aws_instance.web[0], web[1], web[2]
-3. Handle for_each with string keys — aws_instance.web["prod"]
-4. Leave dynamic blocks for later
-
-### Key Rules
-
-- Resolver lives in engine/resolver/ only
-- No changes to existing diff engine, classifier, or scorer
-- Add tests in tests/test_resolver.py
-- Use tests/fixtures/ for all test state files — never real AWS IDs
+Two goals in order. Complete Goal 1 fully before Goal 2.
 
 ---
 
-## Permanent Test Rules (enforced from Sprint 3)
+### Goal 1 — Dashboard Redesign (Modern SaaS, Datadog/Linear feel)
+
+Redesign the entire frontend. Keep all existing functionality. Improve everything visual.
+
+Design direction:
+
+- Dark theme, clean, modern SaaS like Datadog or Linear
+- Font: Inter (import from Google Fonts in index.html only)
+- Resource names and IDs in monospace (font-mono)
+- Proper visual hierarchy — clear size/weight difference between headings, labels, values
+- Subtle card borders, slight card background lift vs page background
+- Minimal — no heavy animations, no gradients everywhere
+- Feels fast and light — no new libraries
+
+Summary cards:
+
+- Larger number display, clear label above
+- Color only on the number not the whole card
+- Subtle left border accent matching risk color
+- Total card neutral, others colored by severity
+
+Drift events table — redesign completely:
+
+- Each row is a mini-card with slight padding and border
+- Resource address in monospace, bold
+- Drift type as a subtle pill badge
+- Desired and Actual shown as: t3.micro → t3.small with arrow
+- Risk badge: colored pill, consistent sizing
+- Detected At: relative time (2 hours ago) not raw timestamp
+- Expand row on click to show:
+  - Full drift details
+  - AI explanation inline (fetch GET /api/drift/{id}/explain on expand,
+    show with subtle AI icon, loading state while fetching)
+  - Fix button (POST /api/drift/{id}/remediate — Goal 2)
+  - PR URL as clickable link if returned
+
+Bar chart:
+
+- Cleaner, taller
+- Custom bar color per drift type (not all same blue)
+- Proper axis labels
+
+Header:
+
+- DriftWatch name left aligned
+- Last refreshed timestamp top right
+- Buttons right aligned
+- Subtle pulse dot when auto-refreshing
+
+No new libraries — keep React + TypeScript + Tailwind + Recharts + Axios
+
+---
+
+### Goal 2 — GitOps PR Generation
+
+1. engine/remediator/remediator.py
+   Given a DriftResult generate a minimal Terraform patch:
+
+- Infrastructure Drift → update changed attribute in HCL to match actual
+- Ownership Drift → generate new resource block + terraform import command
+- Configuration Drift → update missing/changed attribute
+- Never generate destroy operations
+- Never generate patches for State Drift
+- Return RemediationPatch:
+  resource_address: str
+  patch_hcl: str
+  import_command: str | None
+  description: str
+
+2. api/github_pr.py
+   Given a RemediationPatch:
+
+- Create branch: drift-fix/{resource_address}-{short_uuid}
+- Commit patch_hcl as change to terraform-demo/main.tf
+- Open PR against drift-remediation branch with:
+  Title: [DriftWatch] Fix drift on {resource_address}
+  Body: drift summary + proposed HCL + import command + risk level
+  Footer: Generated by DriftWatch — requires human review before merge
+- GITHUB_TOKEN and GITHUB_REPO in .env.example
+- If GITHUB_TOKEN not set skip silently return None
+
+3. POST /api/drift/{id}/remediate
+
+- Fetch drift event from DB
+- Generate RemediationPatch
+- Open GitHub PR
+- Return { "pr_url": "...", "patch": {...} }
+- If PR fails return patch only with pr_url: null
+
+Hard rules for Goal 2:
+
+- Never auto-merge, never auto-apply, never destroy
+- Human approval required — PR is the gate
+- GITHUB_TOKEN optional — endpoint still returns patch if not set
+- All existing 91 tests must still pass
+- Add tests for remediator
+
+---
+
+## Permanent Test Rules
 
 - Tests must NEVER hardcode AWS resource IDs, instance IDs, AMI IDs, or SG IDs
-- Assert shape and format only — cloud_id starts with "i-", sg starts with "sg-"
-- All tests needing a state file use tests/fixtures/demo.tfstate
-- Never depend on terraform-demo/terraform.tfstate which is gitignored
-- All tests must pass on a clean checkout with zero AWS resources deployed
+- Assert shape and format only
+- All tests use tests/fixtures/demo.tfstate
+- All tests pass on clean checkout with zero AWS deployed
 
 ---
 
@@ -121,53 +190,32 @@ driftwatch/
 │ ├── models/db.py
 │ ├── services.py
 │ ├── config.py
-│ └── database.py
-├── scraper/
-│ └── scheduler.py
-├── frontend/
-│ └── src/
+│ ├── database.py
+│ ├── notifications.py
+│ └── github_pr.py SPRINT 6
 ├── engine/
 │ ├── parser/
 │ ├── diff/
 │ ├── classifier/
 │ ├── scorer/
-│ └── resolver/ CURRENT SPRINT
-├── providers/
-│ ├── aws/
-│ └── gcp/ stub only
+│ ├── resolver/
+│ ├── explainer/
+│ └── remediator/ SPRINT 6
+├── scraper/
+├── frontend/
+├── policies/
+│ └── rules.rego
 ├── models/
 ├── tests/
-│ └── fixtures/ demo.tfstate — checked in, fake valid-format IDs
+│ └── fixtures/
 ├── scripts/
-│ ├── simulate_drift.sh
-│ └── restore_state.sh
 ├── migrations/
 ├── terraform-demo/
 ├── docker/
-│ ├── docker-compose.yml
-│ ├── Dockerfile.api
-│ └── Dockerfile.frontend
 ├── .env.example
 ├── main.py
 ├── requirements.txt
 └── CLAUDE.md
-
----
-
-## CloudProvider Interface
-
-class CloudProvider(ABC):
-@abstractmethod
-def list_resources(self, resource_types: list[str]) -> list[NormalizedResource]:
-pass
-
-    @abstractmethod
-    def get_resource(self, resource_id: str) -> NormalizedResource:
-        pass
-
-AWSProvider implements this fully.
-GCPProvider is a stub with raise NotImplementedError.
-NormalizedResource must have zero AWS-specific field names.
 
 ---
 
@@ -177,11 +225,11 @@ NormalizedResource must have zero AWS-specific field names.
 - State store: Postgres + Redis
 - HCL parsing: python-hcl2
 - AWS SDK: boto3
-- Policy engine: Python functions (MVP) -> OPA/Rego (Sprint 5)
-- AI: Groq llama-3.3-70b — explanation only (Sprint 5)
-- Frontend: React + TypeScript + Tailwind + Recharts
+- Policy engine: OPA/Rego with Python fallback
+- AI: Groq llama-3.3-70b — explanation only
+- Frontend: React + TypeScript + Tailwind + Recharts + Axios
 - Observability: Prometheus + Grafana
-- Deployment: Docker Compose (current) -> Kind + Helm (Sprint 6+)
+- Deployment: Docker Compose (9 services)
 - CI/CD: GitHub Actions
 - AWS region: ap-south-1 (Mumbai)
 
@@ -192,7 +240,7 @@ NormalizedResource must have zero AWS-specific field names.
 - Sprint 1 DONE
 - Sprint 2 DONE
 - Sprint 3 DONE
-- Sprint 4 CURRENT — Resource Resolver (count, for_each)
-- Sprint 5 — OPA/Rego policies + Groq drift explanation + Slack alerting
-- Sprint 6 — GitOps PR generation (GitHub API + terraform import)
-- Sprint 7 — Polish, README, architecture diagram, demo GIF, resume bullets
+- Sprint 4 DONE
+- Sprint 5 DONE
+- Sprint 6 CURRENT — Dashboard redesign + GitOps PR generation
+- Sprint 7 — Polish, README, architecture diagram, CI/CD, resume bullets
