@@ -38,3 +38,11 @@ resource "aws_s3_bucket" "data" {
     Name = "driftwatch-demo-data"
   }
 }
+
+
+# --- DriftWatch proposed remediation (review before merge) ---
+# DriftWatch remediation for aws_security_group.web_sg
+# ingress: tcp:443-443:0.0.0.0/0 -> tcp:22-22:0.0.0.0/0, tcp:3389-3389:0.0.0.0/0, tcp:443-443:0.0.0.0/0
+resource "aws_security_group" "web_sg" {
+  ingress = "tcp:22-22:0.0.0.0/0, tcp:3389-3389:0.0.0.0/0, tcp:443-443:0.0.0.0/0"
+}
