@@ -8,50 +8,84 @@ DriftWatch is a Terraform-aware cloud governance platform that reconciles three 
 2. Recorded State — Terraform State File (what Terraform thinks exists)
 3. Actual State — AWS APIs via boto3 (what actually exists)
 
-It classifies drift into 5 types, scores impact across cost/risk/governance dimensions, and eventually generates GitOps remediation PRs.
+It classifies drift into 5 types, scores impact across cost/risk/governance dimensions, and generates GitOps remediation PRs.
 
 AWS Region: ap-south-1 (Mumbai) — clean account, zero prior resources.
 
 ---
 
-## Current Sprint: Sprint 1 — Core Engine Only
+## Sprint Status
+
+- Sprint 1 DONE — three-way diff engine, drift classifier, AWS provider, 53 tests
+- Sprint 2 DONE — FastAPI + Postgres + Docker Compose, 8 services
+- Sprint 3 DONE — React dashboard, live reconciliation, Simulate/Restore buttons
+- Sprint 4 CURRENT — Resource Resolver (count, for_each)
+- Sprint 5 NEXT — OPA policies + Groq explanation + Slack alerts
+- Sprint 6 — GitOps PR generation
+- Sprint 7 — Polish + README + resume bullets
+
+---
+
+## What is Working Right Now
+
+- python main.py — CLI three-way reconciliation against live AWS
+- DRIFTWATCH_OFFLINE=1 python main.py — offline demo using tests/fixtures/demo.tfstate
+- docker compose up — all 8 services start cleanly
+- GET /api/drift — triggers fresh reconciliation via BackgroundTasks, returns stored results
+- GET /api/drift/summary — drift counts by risk and type
+- POST /api/drift/simulate — creates fake drift event in DB for demo
+- POST /api/drift/restore — clears simulated drift
+- Dashboard at :3000 — summary cards, drift table, bar chart, Simulate/Restore/Refresh buttons
+- scripts/simulate_drift.sh — real AWS drift scenarios (EC2 resize, SG port 22, S3 tag)
+- scripts/restore_state.sh — restores clean AWS state
+
+---
+
+## Current Sprint: Sprint 4 — Resource Resolver
+
+### Problem
+
+The engine currently only handles simple Terraform resources:
+resource "aws_instance" "web" {}
+
+It does NOT handle:
+resource "aws_instance" "web" {
+count = 3
+} # produces aws_instance.web[0], aws_instance.web[1], aws_instance.web[2]
+
+    resource "aws_instance" "web" {
+      for_each = { prod = "t3.large", staging = "t3.micro" }
+    }
+    # produces aws_instance.web["prod"], aws_instance.web["staging"]
 
 ### Goal
 
-Prove the three-way reconciliation works for EC2, S3, and Security Group.
-Output of python main.py should look like:
+Build engine/resolver/ as a dedicated service that maps:
+Terraform resource_address → AWS resource ID
 
-================================
-aws_instance.web
-Desired: t3.micro
-Recorded: t3.micro
-Actual: m5.large
-Classification: Infrastructure Drift
-Cost Impact: Unknown
-Risk Impact: Low
-Governance: None
-================================
+### Build Order
 
-### Scope — ONLY these, nothing else
+1. Handle simple resources (already works, verify)
+2. Handle count — aws_instance.web[0], web[1], web[2]
+3. Handle for_each with string keys — aws_instance.web["prod"]
+4. Leave dynamic blocks for later
 
-- Parse HCL -> DesiredResource
-- Parse .tfstate -> RecordedResource
-- AWS boto3 scraper for EC2, S3, Security Group -> ActualResource
-- NormalizedResource model (cloud-agnostic)
-- Three-way diff engine -> DriftResult
-- Drift classifier using the Drift Matrix
+### Key Rules
 
-### Hard Rules for This Sprint
+- Resolver lives in engine/resolver/ only
+- No changes to existing diff engine, classifier, or scorer
+- Add tests in tests/test_resolver.py
+- Use tests/fixtures/ for all test state files — never real AWS IDs
 
-- No FastAPI
-- No frontend
-- No Redis
-- No Docker Compose
-- No Grafana
-- No AI/Groq
-- No OPA
-- No database
-- Just Python + boto3 + python-hcl2 + pydantic + pytest
+---
+
+## Permanent Test Rules (enforced from Sprint 3)
+
+- Tests must NEVER hardcode AWS resource IDs, instance IDs, AMI IDs, or SG IDs
+- Assert shape and format only — cloud_id starts with "i-", sg starts with "sg-"
+- All tests needing a state file use tests/fixtures/demo.tfstate
+- Never depend on terraform-demo/terraform.tfstate which is gitignored
+- All tests must pass on a clean checkout with zero AWS resources deployed
 
 ---
 
@@ -67,7 +101,7 @@ Governance: None
 
 ---
 
-## Drift Matrix (core classification logic)
+## Drift Matrix
 
 | Desired | Recorded  | Actual    | Classification       |
 | ------- | --------- | --------- | -------------------- |
@@ -81,45 +115,42 @@ Governance: None
 ## Repository Structure
 
 driftwatch/
+├── api/
+│ ├── main.py
+│ ├── routes/drift.py
+│ ├── models/db.py
+│ ├── services.py
+│ ├── config.py
+│ └── database.py
+├── scraper/
+│ └── scheduler.py
+├── frontend/
+│ └── src/
 ├── engine/
-│ ├── parser/ HCL + tfstate parsers
-│ ├── diff/ three-way diff engine
-│ ├── classifier/ drift type classification
-│ ├── scorer/ cost/risk/governance scoring
-│ └── resolver/ tf address -> AWS resource ID (Sprint 4)
+│ ├── parser/
+│ ├── diff/
+│ ├── classifier/
+│ ├── scorer/
+│ └── resolver/ CURRENT SPRINT
 ├── providers/
-│ ├── aws/ AWSProvider (boto3)
-│ └── gcp/ GCPProvider (stub only)
-├── models/ all pydantic models
+│ ├── aws/
+│ └── gcp/ stub only
+├── models/
 ├── tests/
-├── terraform-demo/ demo infra: EC2 + SG + S3 in ap-south-1
+│ └── fixtures/ demo.tfstate — checked in, fake valid-format IDs
+├── scripts/
+│ ├── simulate_drift.sh
+│ └── restore_state.sh
+├── migrations/
+├── terraform-demo/
 ├── docker/
-├── docs/
+│ ├── docker-compose.yml
+│ ├── Dockerfile.api
+│ └── Dockerfile.frontend
+├── .env.example
 ├── main.py
-├── CLAUDE.md
-└── requirements.txt
-
----
-
-## Key Models
-
-NormalizedResource:
-resource_address: str e.g. "aws_instance.web"
-resource_type: str e.g. "aws_instance"
-cloud_id: str or None e.g. "i-12345" (None if from HCL)
-attributes: dict e.g. {"instance_type": "t3.micro"}
-source: str "desired" | "recorded" | "actual"
-
-DriftResult:
-resource_address: str
-drift_type: str one of the 5 drift types
-field: str which attribute drifted
-desired: str
-recorded: str
-actual: str
-cost_impact: str "Unknown" | "$X/month"
-risk_impact: str "Low" | "Medium" | "High" | "Critical"
-governance_impact: str "None" | description
+├── requirements.txt
+└── CLAUDE.md
 
 ---
 
@@ -140,34 +171,28 @@ NormalizedResource must have zero AWS-specific field names.
 
 ---
 
-## AWS Demo Infrastructure (terraform-demo/)
+## Tech Stack
 
-Three resources only:
-
-- aws_instance (t3.micro)
-- aws_security_group
-- aws_s3_bucket
-  Region: ap-south-1
-
----
-
-## Tech Stack (Sprint 1)
-
-- Python 3.11+
-- python-hcl2
-- boto3
-- pydantic
-- pytest
+- Backend: FastAPI, APScheduler, SQLAlchemy, Alembic
+- State store: Postgres + Redis
+- HCL parsing: python-hcl2
+- AWS SDK: boto3
+- Policy engine: Python functions (MVP) -> OPA/Rego (Sprint 5)
+- AI: Groq llama-3.3-70b — explanation only (Sprint 5)
+- Frontend: React + TypeScript + Tailwind + Recharts
+- Observability: Prometheus + Grafana
+- Deployment: Docker Compose (current) -> Kind + Helm (Sprint 6+)
+- CI/CD: GitHub Actions
+- AWS region: ap-south-1 (Mumbai)
 
 ---
 
 ## Sprint Sequence
 
-- Sprint 1 — Core engine: parse + scrape + diff + classify (CURRENT)
-- Sprint 2 — NormalizedResource model, full normalization pipeline
-- Sprint 3 — Three-way diff engine + Drift Matrix classification
-- Sprint 4 — Resource Resolver (count, for_each)
-- Sprint 5 — FastAPI wrapper, Postgres, Docker Compose
-- Sprint 6 — React dashboard
-- Sprint 7 — OPA policies, Groq explanation, alerting
-- Sprint 8 — GitOps PR generation
+- Sprint 1 DONE
+- Sprint 2 DONE
+- Sprint 3 DONE
+- Sprint 4 CURRENT — Resource Resolver (count, for_each)
+- Sprint 5 — OPA/Rego policies + Groq drift explanation + Slack alerting
+- Sprint 6 — GitOps PR generation (GitHub API + terraform import)
+- Sprint 7 — Polish, README, architecture diagram, demo GIF, resume bullets

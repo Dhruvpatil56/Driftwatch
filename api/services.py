@@ -15,15 +15,19 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from api import notifications
 from api.config import settings
 from api.models.db import DriftEvent
 from engine.diff import reconcile
-from engine.parser import parse_hcl, parse_tfstate
+from engine.explainer import explain as explain_drift
+from engine.parser import parse_tfstate
+from engine.resolver import resolve_hcl
 from models.drift import DriftResult
 from providers.aws import AWSProvider, build_actual
 
@@ -63,7 +67,7 @@ def _get_actual() -> list:
 
 def detect() -> list[DriftResult]:
     """Run the full three-way reconciliation and return scored drift."""
-    desired = parse_hcl(settings.hcl_path)
+    desired = resolve_hcl(settings.hcl_path)
     recorded = parse_tfstate(settings.tfstate_path)
     actual = _get_actual()
     return reconcile(desired, recorded, actual)
@@ -101,11 +105,13 @@ def scan_and_persist(db: Session) -> list[DriftEvent]:
     )
     existing_by_key = {_event_key(e): e for e in existing}
     current_keys = set()
+    new_results: list[DriftResult] = []
 
     for r in results:
         k = _result_key(r)
         current_keys.add(k)
         if k not in existing_by_key:
+            new_results.append(r)
             db.add(
                 DriftEvent(
                     resource_address=r.resource_address,
@@ -127,7 +133,51 @@ def scan_and_persist(db: Session) -> list[DriftEvent]:
             e.resolved_at = now
 
     db.commit()
+
+    # Alert on newly-detected high-severity drift. Best-effort: never let a
+    # notification problem break a scan.
+    notifications.notify_new_drift(new_results)
+
     return list_active(db)
+
+
+# --- explanation -----------------------------------------------------------
+def get_event(db: Session, drift_id: str) -> DriftEvent | None:
+    """Fetch a drift event by id, tolerating malformed ids (-> ``None``)."""
+    try:
+        key = uuid.UUID(str(drift_id))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    return db.get(DriftEvent, key)
+
+
+def explain_event(db: Session, drift_id: str) -> dict | None:
+    """Return a plain-English explanation for one drift event, or ``None`` if
+    the id is unknown. AI is explanation-only — this never mutates drift."""
+    event = get_event(db, drift_id)
+    if event is None:
+        return None
+    text = explain_drift(_event_to_result(event))
+    return {
+        "id": str(event.id),
+        "resource_address": event.resource_address,
+        "drift_type": event.drift_type,
+        "explanation": text,
+    }
+
+
+def _event_to_result(e: DriftEvent) -> DriftResult:
+    return DriftResult(
+        resource_address=e.resource_address,
+        drift_type=e.drift_type,
+        field=e.field or "",
+        desired=e.desired or "",
+        recorded=e.recorded or "",
+        actual=e.actual or "",
+        cost_impact=e.cost_impact or "Unknown",
+        risk_impact=e.risk_impact or "Low",
+        governance_impact=e.governance_impact or "None",
+    )
 
 
 def list_active(db: Session) -> list[DriftEvent]:

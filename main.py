@@ -17,7 +17,8 @@ import os
 import sys
 
 from engine.diff import reconcile
-from engine.parser import parse_hcl, parse_tfstate
+from engine.parser import parse_tfstate
+from engine.resolver import resolve_hcl
 from models.drift import DriftResult
 from models.normalized import NormalizedResource
 from providers.aws import AWSProvider, build_actual
@@ -73,7 +74,7 @@ def print_drift(d: DriftResult) -> None:
 
 
 def main() -> int:
-    desired = parse_hcl(HCL_PATH)
+    desired = resolve_hcl(HCL_PATH)
     recorded = parse_tfstate(STATE_PATH)
     actual, mode = get_actual()
 

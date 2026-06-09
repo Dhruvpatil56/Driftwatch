@@ -1,63 +1,31 @@
 # DriftWatch — Build Status
 
-Sprints 1–3 complete. Core engine + FastAPI/Postgres API + React dashboard.
+**Current: Sprint 5 complete** — OPA policy engine + Groq drift explanations + Slack alerting.
 
-## What it does
-Reconciles 3 views of infra and classifies drift, then serves + visualizes it:
-- **Desired** (HCL) + **Recorded** (tfstate) + **Actual** (AWS) → `DriftResult` → DB → dashboard
+## Latest changes (Sprint 5)
+- **OPA policy engine** — `engine/scorer/score()` POSTs each drift to the OPA sidecar (`/v1/data/driftwatch/policies/decision`, port 8181) and applies `{risk, governance}`. `OPA_URL` unset → disabled (no network); unreachable → **Python scorer fallback** (original rules preserved). Verified end-to-end against real OPA 1.17.1.
+- **Policies** (`policies/rules.rego`) — SG `0.0.0.0/0` :22→Critical · :3389→Critical · S3 missing required tag→Medium · EC2 type not approved→High · Ownership Drift→Medium. Highest severity wins.
+- **Groq explainer** (`engine/explainer/`) — `GET /api/drift/{id}/explain` → plain-English what/why/cause via `llama-3.3-70b-versatile`. No `GROQ_API_KEY` → deterministic local fallback. Cached in Redis by drift identity; cache failure non-fatal. **AI = explanation only.**
+- **Slack alerts** (`api/notifications.py`) — new Critical/High drift in `scan_and_persist` → webhook (resource, type, risk, one-line Groq explanation). `SLACK_WEBHOOK_URL` unset → skipped silently; send errors swallowed.
+- Engine/notifier read config from `os.environ` (decoupled; tests default to **disabled**, never hit network). New env: `OPA_URL`, `REDIS_URL`, `GROQ_API_KEY`, `GROQ_MODEL`, `SLACK_WEBHOOK_URL`. Docker adds the `opa` sidecar (now 9 services).
+- Tests: **91 pass + 7 skipped** (Rego cases need the `opa` binary; pass when present). Diff engine + classifier untouched.
+
+## Earlier sprints (one-liners)
+- **S1** — three-way diff engine, drift classifier, AWS provider, normalization.
+- **S2** — FastAPI + Postgres + Docker Compose; `DriftEvent` persistence + scraper.
+- **S3** — React/TS dashboard; live reconciliation; Simulate/Restore.
+- **S4** — `engine/resolver/` expands `count`/`for_each` → indexed addresses (`web[0]`, `web["prod"]`), wired into the live pipeline via `resolve_hcl`.
 
 ## Pipeline
 ```
-parse_hcl ─┐
-parse_tfstate ─┤→ normalize → reconcile → classify → score → drift_events (DB) → /api → dashboard
-AWSProvider ─┘
+resolve_hcl ─┐  (expands count/for_each)
+parse_tfstate ─┤→ normalize → reconcile → classify → score(OPA→Python) → drift_events (DB) → /api → dashboard
+AWSProvider ─┘                                                            └→ Slack alert (new Critical/High)
+                                                          GET /drift/{id}/explain → Groq (cached in Redis)
 ```
-
-## Modules
-| Path | Role |
-|------|------|
-| `models/` | `NormalizedResource`, `DriftResult` |
-| `engine/parser/` | HCL + tfstate parsers, normalization (incl. S3 tags) |
-| `engine/classifier/` | Drift Matrix (`classify_presence`, `classify_value`) |
-| `engine/diff/` | three-way reconcile + cloud_id matching |
-| `engine/scorer/` | cost/risk/governance impact |
-| `providers/aws/` | boto3 scraper (EC2/S3/SG) · `providers/gcp/` stub |
-| `api/` | FastAPI app, SQLAlchemy `DriftEvent`, detection+persistence service |
-| `scraper/` | APScheduler, scans every 15 min |
-| `migrations/` | alembic (`0001_create_drift_events`) |
-| `frontend/` | React+TS+Tailwind+Recharts dashboard |
-| `docker/` | compose (8 services) + Dockerfiles |
-| `scripts/` | `wait_for_db.py`, `simulate_drift.sh`, `restore_state.sh` |
-| `tests/fixtures/` | `demo.tfstate` — checked-in fixture, fake valid-format IDs |
-| `main.py` | Sprint 1 CLI report |
 
 ## API (`/api`)
-`GET /health` · `GET /drift` · `GET /drift/summary` · `POST /drift/simulate` · `POST /drift/restore` · `/metrics`
-
-## Dashboard (localhost:3000)
-Single dark page: summary cards (Total/Critical/High/Medium/Low), drift table (main element), bar chart by type, Simulate/Restore/Refresh buttons, 30s auto-refresh. Risk colors: Critical=red, High=orange, Medium=yellow, Low=green.
-
-## State (two paths)
-- **Tests** use the checked-in `tests/fixtures/demo.tfstate` (fake valid-format IDs) — no AWS, no local state needed. Detection state path is configurable via `TFSTATE_PATH`.
-- **Live app / CLI** reads `terraform-demo/terraform.tfstate` (gitignored, real AWS state):
-  ```bash
-  cd terraform-demo && terraform init && terraform apply   # creates real infra + local state
-  ```
-
-## Run
-```bash
-# Tests — pass on a clean checkout, zero AWS deployed
-python -m pytest                        # 53 tests
-
-# CLI (Sprint 1) — needs local real tfstate
-python main.py                          # live AWS (ap-south-1)
-DRIFTWATCH_OFFLINE=1 python main.py     # actual-state from demo fixture
-
-# Full stack
-cd docker && cp ../.env.example ../.env && docker compose up   # 8 services
-# api :8000  frontend :3000  postgres :5432  redis :6379
-# prometheus :9090  grafana :3001  pgadmin :5050  + scraper
-```
+`GET /health` · `GET /drift` · `GET /drift/summary` · `GET /drift/{id}/explain` · `POST /drift/simulate` · `POST /drift/restore` · `/metrics`
 
 ## Drift Matrix
 | Desired | Recorded | Actual | → |
@@ -67,10 +35,19 @@ cd docker && cp ../.env.example ../.env && docker compose up   # 8 services
 | Exists | Exists | Missing | Configuration Drift |
 | Missing | Missing | Exists | Ownership Drift |
 
+## Run
+```bash
+python -m pytest                        # 91 pass + 7 skipped (Rego tests need the opa binary)
+python main.py                          # CLI, live AWS (ap-south-1)
+DRIFTWATCH_OFFLINE=1 python main.py     # CLI, demo fixture
+cd docker && cp ../.env.example ../.env && docker compose up   # 9 services
+# api :8000  frontend :3000  postgres :5432  redis :6379  opa :8181
+# prometheus :9090  grafana :3001  pgadmin :5050  + scraper
+```
+
 ## Status
-- ✅ 53 Python tests pass on a **clean checkout, zero AWS deployed** (verified with real tfstate moved aside); frontend builds clean (tsc strict + vite)
-- Tests assert ID **shape/format only** (`i-`, `sg-`, `ami-`) — no hardcoded/real AWS IDs; CI-safe
-- Config via `.env` (compose injects it via `env_file`); AWS creds from env (never hardcoded)
-- Stack: Python · FastAPI · SQLAlchemy/alembic · Postgres · APScheduler · React/TS/Tailwind/Recharts · Docker Compose
-- Not yet verified: `docker compose up` end-to-end (no Docker CLI in build env)
-- Next: Sprint 4 resolver (count/for_each) → OPA/Groq → GitOps PRs
+- ✅ Optional/fail-safe: OPA/Groq/Slack default to disabled; tests/CLI never hit the network.
+- ✅ Tests assert ID **shape/format only** (`i-`, `sg-`, `ami-`) — no real AWS IDs; clean-checkout safe.
+- Stack: Python · FastAPI · SQLAlchemy/alembic · Postgres · Redis · OPA · APScheduler · React/TS/Tailwind/Recharts · Docker Compose.
+- Not yet verified: `docker compose up` end-to-end (no Docker CLI in build env).
+- Next: **Sprint 6** — GitOps PR generation (GitHub API + terraform import).

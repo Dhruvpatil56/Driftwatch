@@ -15,6 +15,12 @@ os.environ["DRIFTWATCH_OFFLINE"] = "1"
 # Detection reads a state file; point it at the checked-in fixture so the suite
 # passes on a clean checkout with zero real AWS resources.
 os.environ["TFSTATE_PATH"] = os.path.join(_HERE, "fixtures", "demo.tfstate")
+# Neutralize Sprint 5 external integrations so the startup scan never reaches
+# OPA / Groq / Slack / Redis — even if a developer has them exported.
+for _var in ("OPA_URL", "GROQ_API_KEY", "REDIS_URL", "SLACK_WEBHOOK_URL"):
+    os.environ[_var] = ""
+
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,3 +83,20 @@ def test_simulate_then_restore(client):
 def test_metrics_endpoint_exposed(client):
     resp = client.get("/metrics")
     assert resp.status_code == 200
+
+
+def test_explain_endpoint_returns_explanation(client):
+    events = client.get("/api/drift").json()
+    assert events
+    eid = events[0]["id"]
+    resp = client.get(f"/api/drift/{eid}/explain")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == eid
+    # No GROQ_API_KEY in tests -> deterministic fallback explanation (non-empty).
+    assert isinstance(body["explanation"], str) and body["explanation"]
+
+
+def test_explain_unknown_id_returns_404(client):
+    assert client.get("/api/drift/not-a-uuid/explain").status_code == 404
+    assert client.get(f"/api/drift/{uuid.uuid4()}/explain").status_code == 404

@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     scrape_interval_minutes: int = 15
 
+    # Sprint 5 integrations. NOTE: the engine (scorer/explainer) and the Slack
+    # notifier read these straight from os.environ so they stay decoupled and so
+    # local test runs (where .env is not injected into the process environment)
+    # default to "disabled". These fields exist for visibility/validation.
+    opa_url: str = ""
+    redis_url: str = ""
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    slack_webhook_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

@@ -29,6 +29,19 @@ services:
     ports:
       - "6379:6379"
 
+  # Open Policy Agent — evaluates policies/rules.rego for the scorer.
+  opa:
+    image: openpolicyagent/opa:latest
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies/rules.rego"
+    ports:
+      - "8181:8181"
+    volumes:
+      - ../policies:/policies:ro
+
   api:
     build:
       context: ..
@@ -39,6 +52,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      opa:
+        condition: service_started
+      redis:
+        condition: service_started
 
   scraper:
     build:
@@ -49,6 +66,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      opa:
+        condition: service_started
+      redis:
+        condition: service_started
 
   frontend:
     build:

@@ -5,13 +5,14 @@ Endpoints:
   GET  /api/drift          — current (unresolved) drift events (instant);
                              refreshes in the background
   GET  /api/drift/summary  — counts by risk and by type
+  GET  /api/drift/{id}/explain — plain-English (Groq) explanation of one event
   POST /api/drift/simulate — create a demo drift event
   POST /api/drift/restore  — clear simulated drift
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from api import services
@@ -53,6 +54,14 @@ def get_drift(
 @router.get("/drift/summary")
 def get_summary(db: Session = Depends(get_db)) -> dict:
     return services.summary(db)
+
+
+@router.get("/drift/{drift_id}/explain")
+def explain_drift(drift_id: str, db: Session = Depends(get_db)) -> dict:
+    result = services.explain_event(db, drift_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="drift event not found")
+    return result
 
 
 @router.post("/drift/simulate")
